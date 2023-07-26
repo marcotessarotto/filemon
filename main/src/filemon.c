@@ -32,15 +32,18 @@ gcc filemon.c -o filemon -s
 #include <sys/wait.h>
 
 
+typedef char * char_p;
+
 char * command = NULL;
 #define MAX_COMMAND_LEN (PATH_MAX - NAME_MAX - 1)
 
 
 char space[] = " ";
+char slash[] = "/";
 
-static void show_inotify_event(struct inotify_event *i)
+static void show_inotify_event(struct inotify_event *i, char_p dir_name)
 {
-    printf("[wd=%2d] ", i->wd);
+    printf("[dir_name='%s' wd=%2d] ",dir_name, i->wd);
 
     if (i->cookie > 0)
         printf("cookie=%4d ", i->cookie);
@@ -104,6 +107,14 @@ static void show_inotify_event(struct inotify_event *i)
     		// append ' ' to cmd
     		strcat(cmd, space);
 
+    		// append dir_name
+    		strcat(cmd, dir_name);
+
+    		// check if dir_name ends with slash symbol
+    		if (dir_name[strlen(dir_name)] != '/') {
+    			strcat(cmd, slash);
+    		}
+
     		// append file name do cmd
     		strncat(cmd, i->name, i->len);
 
@@ -162,9 +173,9 @@ char buf[BUF_LEN] __attribute__ ((aligned(__alignof__(struct inotify_event))));
 // https://gcc.gnu.org/onlinedocs/gcc/Alignment.html
 //
 
-typedef char * mystr;
 
-void monitor(mystr directories[], int directories_len) {
+
+void monitor(char_p directories[], int directories_len) {
 
 
 	int wd;
@@ -179,10 +190,15 @@ void monitor(mystr directories[], int directories_len) {
 //	char * cwd;
 //
 //	cwd = getcwd(NULL, 0);
-//
 //	printf("process current working directory: %s\n", cwd);
-//
 //	free(cwd);
+
+	int * wd_names;
+	wd_names = malloc(sizeof(int) * directories_len);
+	if (wd_names == NULL) {
+        perror("malloc error");
+        exit(EXIT_FAILURE);
+	}
 
 	if (directories_len == 0) {
 		printf("provide at least a file or directory to watch!\n");
@@ -210,6 +226,8 @@ void monitor(mystr directories[], int directories_len) {
             perror("inotify_init");
             exit(EXIT_FAILURE);
         }
+
+        wd_names[j] = wd;
 
         // we do not keep wd...
 
@@ -246,7 +264,22 @@ void monitor(mystr directories[], int directories_len) {
         for (char * p = buf; p < buf + num_bytes_read; ) {
             event = (struct inotify_event *) p;
 
-            show_inotify_event(event);
+            // recover directory name associated to wd
+            // i->wd
+            int dir_pos = -1;
+            for (int i = 0; i < directories_len; i++) {
+            	if (wd_names[i] == event->wd) {
+            		dir_pos = i;
+            		break;
+            	}
+            }
+
+            if (dir_pos == -1) {
+            	fprintf(stderr, "cannot find directory name!\n");
+            	exit(EXIT_FAILURE);
+            }
+
+            show_inotify_event(event, directories[dir_pos]);
 
             p += sizeof(struct inotify_event) + event->len;
             // event->len is length of (optional) file name
@@ -262,11 +295,13 @@ int main(int argc, char * argv[]) {
 
     int opt;
 
-    mystr * dirs; // dynamic array
+    char_p * dirs; // dynamic array
     int dirs_len = 0;
     int dirs_counter = 0;
 
     dirs = NULL;
+
+    char_p * abs_dirs;
 
 
     while ((opt = getopt(argc, argv, "d:c:")) != -1) {
@@ -275,7 +310,7 @@ int main(int argc, char * argv[]) {
         	if (dirs_counter >= dirs_len) {
 
         		dirs_len += 16;
-        		dirs = realloc(dirs, sizeof(mystr) * dirs_len);
+        		dirs = realloc(dirs, sizeof(char_p) * dirs_len);
 
         	    if (dirs == NULL) {
         	        fprintf(stderr, "cannot reallocate array for files/directories to monitor\n");
@@ -314,7 +349,32 @@ int main(int argc, char * argv[]) {
 	}
 
 	if (dirs_len > 0) {
-		monitor(dirs, dirs_len);
+
+		// transform dirs to absolute paths
+		abs_dirs = malloc(sizeof(char_p) * dirs_len);
+		if (abs_dirs == NULL) {
+	        fprintf(stderr, "cannot allocate array for files/directories to monitor\n");
+	        exit(EXIT_FAILURE);
+		}
+
+		for (int i = 0; i < dirs_len; i++) {
+			if (dirs[i] == NULL)
+				continue;
+
+			abs_dirs[i] = calloc(PATH_MAX, sizeof(char));
+			if (abs_dirs[i] == NULL) {
+		        fprintf(stderr, "cannot allocate array for files/directories to monitor\n");
+		        exit(EXIT_FAILURE);
+			}
+
+			if (realpath(dirs[i], abs_dirs[i]) == NULL) {
+				perror("error in calculating absolute path");
+				exit(EXIT_FAILURE);
+			}
+		}
+
+
+		monitor(abs_dirs, dirs_len);
 	}
 
 
