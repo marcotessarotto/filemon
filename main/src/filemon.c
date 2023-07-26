@@ -20,6 +20,14 @@
 #include <sys/inotify.h>
 #include <limits.h>
 
+#include <sys/wait.h>
+
+
+char * command = NULL;
+#define MAX_COMMAND_LEN (PATH_MAX - NAME_MAX - 1)
+
+
+char space[] = " ";
 
 static void show_inotify_event(struct inotify_event *i)
 {
@@ -73,6 +81,73 @@ static void show_inotify_event(struct inotify_event *i)
     if (i->mask & IN_UNMOUNT)       printf("IN_UNMOUNT ");
     printf("\n");
 
+
+    // flags.CREATE | flags.CLOSE_WRITE | flags.CLOSE_NOWRITE
+
+    if ((i->mask & IN_CREATE) || (i->mask & IN_CLOSE_WRITE) || (i->mask & IN_CLOSE_NOWRITE)) {
+    	// execute command passing file as parameter
+    	if (i->len) {
+
+    		char cmd[PATH_MAX];
+    		cmd[0] = 0;
+
+    		// append command to cmd
+    		strcat(cmd, command);
+
+    		// append ' ' to cmd
+    		strcat(cmd, space);
+
+    		// append file name do cmd
+    		strncat(cmd, i->name, i->len);
+
+    		printf("cmd: %s\n", cmd);
+
+    		pid_t child_pid;
+    		int wstatus;
+    		int modal_result = -1;
+
+    		switch (child_pid = fork()) {
+    		case -1:
+    			perror("cannot fork");
+    			exit(EXIT_FAILURE);
+    		case 0:
+
+    			child_pid = getpid();
+    			printf("[child process] pid=%d\n", child_pid);
+
+    			if (execl("/bin/sh", "sh", "-c", cmd, (char *) NULL) != 0) {
+    				perror("[child process] execl");
+    				exit(EXIT_FAILURE);
+    			}
+
+    			break;
+    		default:
+    			;
+    		}
+
+
+    		do {
+            	pid_t ws = waitpid(child_pid, &wstatus, 0);
+                if (ws == -1) {
+                    perror("[parent] waitpid");
+                    exit(EXIT_FAILURE);
+                }
+
+                if (WIFEXITED(wstatus)) {
+
+                	modal_result = WEXITSTATUS(wstatus);
+
+                    printf("[parent] child process è terminato, ha restituito: %d\n", modal_result);
+                } else if (WIFSIGNALED(wstatus)) {
+                    printf("[parent] child process killed by signal %d\n", WTERMSIG(wstatus));
+                }
+            } while (!WIFEXITED(wstatus) && !WIFSIGNALED(wstatus));
+
+    		// fork
+
+    		execl("/bin/sh", "sh", "-c", cmd, (char *) NULL);
+    	}
+    }
 }
 
 
@@ -184,21 +259,13 @@ void monitor(mystr directories[], int directories_len) {
 int main(int argc, char * argv[]) {
 
     int opt;
-    //char * directory[MAX_FILES] = { NULL };
 
     mystr * dirs; // dynamic array
     int dirs_len = 0;
     int dirs_counter = 0;
 
-    dirs = NULL; // malloc(sizeof(mystr) * directories_len);
+    dirs = NULL;
 
-//    if (directories == NULL) {
-//        fprintf(stderr, "cannot allocate array for directories\n");
-//        exit(EXIT_FAILURE);
-//    }
-
-    //int directory_counter = 0;
-    char * command = NULL;
 
     while ((opt = getopt(argc, argv, "d:s:")) != -1) {
         switch (opt) {
@@ -209,7 +276,7 @@ int main(int argc, char * argv[]) {
         		dirs = realloc(dirs, sizeof(mystr) * dirs_len);
 
         	    if (dirs == NULL) {
-        	        fprintf(stderr, "cannot reallocate array for directories\n");
+        	        fprintf(stderr, "cannot reallocate array for files/directories to monitor\n");
         	        exit(EXIT_FAILURE);
         	    }
 
@@ -221,21 +288,30 @@ int main(int argc, char * argv[]) {
         	command = optarg;
             break;
         default: /* '?' */
-            fprintf(stderr, "Usage: %s -d directory -s command\n",
+            fprintf(stderr, "Usage: %s -d file/directory -s command\n",
                     argv[0]);
             exit(EXIT_FAILURE);
         }
     }
-    printf("optind=%d\n", optind);
+//    printf("optind=%d\n", optind);
 
 
 	printf("directory_counter=%d\n", dirs_counter);
 	for (int i = 0; i < dirs_len; i++) {
-
 		printf("directory[%d]: %s\n", i, dirs[i]);
 	}
 
     printf("command: %s\n", command);
+
+
+	if (command == NULL || strlen(command) > MAX_COMMAND_LEN) {
+		fprintf(stderr, "invalid command\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (dirs_len > 0) {
+		monitor(dirs, dirs_len);
+	}
 
 
 	return EXIT_SUCCESS;
