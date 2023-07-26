@@ -5,6 +5,12 @@
  Version     :
  Copyright   : Marco Tessarotto (c) 2023
  Description : monitors one or more files or directories specified as parameters; when a new file is detected, invokes an action on it
+ monitors the following inotify events: IN_CREATE, IN_CLOSE_NOWRITE, IN_CLOSE_WRITE
+
+ example: filemon -d /tmp/ -c "ls -l"
+
+ monitor directory tmp; when a file is created, command is executed with new file as parameter
+
  ============================================================================
  */
 
@@ -143,9 +149,7 @@ static void show_inotify_event(struct inotify_event *i)
                 }
             } while (!WIFEXITED(wstatus) && !WIFSIGNALED(wstatus));
 
-    		// fork
 
-    		execl("/bin/sh", "sh", "-c", cmd, (char *) NULL);
     	}
     }
 }
@@ -166,21 +170,18 @@ void monitor(mystr directories[], int directories_len) {
 	int inotifyFd;
 	int num_bytes_read;
 
+//	printf("NAME_MAX = %d\n", NAME_MAX);
+//	printf("sizeof(struct inotify_event) = %ld\n", sizeof(struct inotify_event));
+//	printf("__alignof__(struct inotify_event) = %ld bytes\n", __alignof__(struct inotify_event));
+//	printf("\n");
 
-	printf("NAME_MAX = %d\n", NAME_MAX);
-	printf("sizeof(struct inotify_event) = %ld\n", sizeof(struct inotify_event));
-	printf("__alignof__(struct inotify_event) = %ld bytes\n", __alignof__(struct inotify_event));
-	printf("\n");
-
-
-
-	char * cwd;
-
-	cwd = getcwd(NULL, 0);
-
-	printf("process current working directory: %s\n", cwd);
-
-	free(cwd);
+//	char * cwd;
+//
+//	cwd = getcwd(NULL, 0);
+//
+//	printf("process current working directory: %s\n", cwd);
+//
+//	free(cwd);
 
 	if (directories_len == 0) {
 		printf("provide at least a file or directory to watch!\n");
@@ -267,7 +268,7 @@ int main(int argc, char * argv[]) {
     dirs = NULL;
 
 
-    while ((opt = getopt(argc, argv, "d:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "d:c:")) != -1) {
         switch (opt) {
         case 'd':
         	if (dirs_counter >= dirs_len) {
@@ -284,11 +285,11 @@ int main(int argc, char * argv[]) {
 
         	dirs[dirs_counter++] = optarg;
             break;
-        case 's':
+        case 'c':
         	command = optarg;
             break;
         default: /* '?' */
-            fprintf(stderr, "Usage: %s -d file/directory -s command\n",
+            fprintf(stderr, "Usage: %s -d file/directory -c command\n",
                     argv[0]);
             exit(EXIT_FAILURE);
         }
@@ -298,7 +299,8 @@ int main(int argc, char * argv[]) {
 
 	printf("directory_counter=%d\n", dirs_counter);
 	for (int i = 0; i < dirs_len; i++) {
-		printf("directory[%d]: %s\n", i, dirs[i]);
+		if (dirs[i] != NULL)
+			printf("directory[%d]: %s\n", i, dirs[i]);
 	}
 
     printf("command: %s\n", command);
