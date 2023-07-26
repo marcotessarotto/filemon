@@ -290,6 +290,13 @@ void monitor(char_p directories[], int directories_len) {
 }
 
 
+void show_help(int argc, char * argv[]) {
+	fprintf(stderr, "monitors one or more files or directories specified as parameters; when a new file is detected, invokes an action on it.\n");
+    fprintf(stderr, "Usage: %s -d file/directory -c command\n", argv[0]);
+    fprintf(stderr, "example: %s -d /tmp/ -d /home/marco/ -c \"ls -l\"\n", argv[0]);
+}
+
+
 
 int main(int argc, char * argv[]) {
 
@@ -325,16 +332,20 @@ int main(int argc, char * argv[]) {
         	command = optarg;
             break;
         default: /* '?' */
-        	fprintf(stderr, "monitors one or more files or directories specified as parameters; when a new file is detected, invokes an action on it.\n");
-            fprintf(stderr, "Usage: %s -d file/directory -c command\n",
-                    argv[0]);
+        	show_help(argc, argv);
+
             exit(EXIT_FAILURE);
         }
     }
 //    printf("optind=%d\n", optind);
 
+    if (command == NULL && dirs_len == 0) {
+    	show_help(argc, argv);
+    	exit(EXIT_FAILURE);
+    }
 
-	printf("directory_counter=%d\n", dirs_counter);
+
+	printf("number of specified files/directories: %d\n", dirs_counter);
 	for (int i = 0; i < dirs_len; i++) {
 		if (dirs[i] != NULL)
 			printf("directory[%d]: %s\n", i, dirs[i]);
