@@ -5,7 +5,7 @@
  Version     :
  Copyright   : Marco Tessarotto (c) 2023
  Description : monitors one or more files or directories specified as parameters; when a new file is detected, invokes an action on it
- monitors the following inotify events: IN_CREATE, IN_CLOSE_NOWRITE, IN_CLOSE_WRITE
+ monitors the following inotify events: IN_CLOSE_NOWRITE, IN_CLOSE_WRITE
 
  example: filemon -d /tmp/ -c "ls -l"
 
@@ -91,9 +91,7 @@ static void show_inotify_event(struct inotify_event *i)
     printf("\n");
 
 
-    // flags.CREATE | flags.CLOSE_WRITE | flags.CLOSE_NOWRITE
-
-    if ((i->mask & IN_CREATE) || (i->mask & IN_CLOSE_WRITE) || (i->mask & IN_CLOSE_NOWRITE)) {
+    if ((i->mask & IN_CLOSE_WRITE) || (i->mask & IN_CLOSE_NOWRITE)) {
     	// execute command passing file as parameter
     	if (i->len) {
 

@@ -3,7 +3,7 @@ file monitor:
 
 monitors one or more files or directories specified as parameters; when a new file is detected, invokes an action on it.
 
-monitors the following inotify events: IN_CREATE, IN_CLOSE_NOWRITE, IN_CLOSE_WRITE
+monitors the following inotify events: IN_CLOSE_NOWRITE, IN_CLOSE_WRITE
 
  example: filemon -d /tmp/ -c "ls -l"
 
