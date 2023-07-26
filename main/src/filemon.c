@@ -11,6 +11,9 @@
 
  monitor directory tmp; when a file is created, command is executed with new file as parameter
 
+
+build on linux:
+gcc filemon.c -o filemon -s
  ============================================================================
  */
 
@@ -289,6 +292,7 @@ int main(int argc, char * argv[]) {
         	command = optarg;
             break;
         default: /* '?' */
+        	fprintf(stderr, "monitors one or more files or directories specified as parameters; when a new file is detected, invokes an action on it.\n");
             fprintf(stderr, "Usage: %s -d file/directory -c command\n",
                     argv[0]);
             exit(EXIT_FAILURE);
