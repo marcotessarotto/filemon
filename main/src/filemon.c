@@ -34,12 +34,15 @@ gcc filemon.c -o filemon -s
 
 typedef char * char_p;
 
+// stores command to execute on file
 char * command = NULL;
-#define MAX_COMMAND_LEN (PATH_MAX - NAME_MAX - 1)
 
+// on linux, PATH_MAX is 4096
+#define MAX_COMMAND_LEN (PATH_MAX*2)
 
-char space[] = " ";
-char slash[] = "/";
+// these are stored in read only memory
+char *space = " ";
+char *slash = "/";
 
 static void show_inotify_event(struct inotify_event *i, char_p dir_name)
 {
