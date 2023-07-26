@@ -40,7 +40,6 @@ char * command = NULL;
 // on linux, PATH_MAX is 4096
 #define MAX_COMMAND_LEN (PATH_MAX*2)
 
-// these are stored in read only memory
 char *space = " ";
 char *slash = "/";
 
@@ -230,9 +229,8 @@ void monitor(char_p directories[], int directories_len) {
             exit(EXIT_FAILURE);
         }
 
+        // associate watch descriptor to position of name in the array of strings
         wd_names[j] = wd;
-
-        // we do not keep wd...
 
         printf("Watching %s using wd %d\n", directories[j], wd);
     }
@@ -364,7 +362,7 @@ int main(int argc, char * argv[]) {
 
 	if (dirs_len > 0) {
 
-		// transform dirs to absolute paths
+		// transform paths to absolute paths
 		abs_dirs = malloc(sizeof(char_p) * dirs_len);
 		if (abs_dirs == NULL) {
 	        fprintf(stderr, "cannot allocate array for files/directories to monitor\n");
