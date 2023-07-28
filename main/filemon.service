@@ -1,0 +1,11 @@
+[Unit]
+Description=filemon service
+
+[Service]
+User=marco
+Group=marco
+ExecStart=/usr/bin/filemon -d /home/marco/directory/ -c /home/marco/process_file.sh
+
+[Install]
+WantedBy=multi-user.target
+
