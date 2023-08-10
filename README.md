@@ -95,7 +95,7 @@ WantedBy=multi-user.target
 ```
 
 In this example, `filemon` monitors the `/home/marco/directory/` directory; 
-when the IN_CLOSE_WRITE event regarding a file in the directory is notified to `filemon',
+when the IN_CLOSE_WRITE event regarding a file in the directory is notified to `filemon`,
 it invokes the `/home/marco/process_file.sh` command on the file which is passed as a parameter to the command.
 
 
