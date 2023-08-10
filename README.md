@@ -61,7 +61,7 @@ filemon[9714]: [parent] child process has terminated, returning: 0
 build on linux:
 
 ```bash
-gcc filemon.c -o   -s
+gcc filemon.c -o filemon -s
 ```
 
 install to /usr/bin/ directory: 
