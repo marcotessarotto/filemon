@@ -4,12 +4,12 @@
  Author      : 
  Version     :
  Copyright   : Marco Tessarotto (c) 2023
- Description : monitors one or more files or directories specified as parameters; when a new file is detected, invokes an action on it
- monitors the following inotify events: IN_CLOSE_NOWRITE, IN_CLOSE_WRITE
+ Description : monitors one or more files or directories specified as parameters; when a new event is notified, invokes an action on the file.
+ it monitors the following inotify events: IN_CLOSE_WRITE
 
  example: filemon -d /tmp/ -c "ls -l"
 
- monitor directory tmp; when a file is created, command is executed with new file as parameter
+ monitor directory tmp; when a IN_CLOSE_WRITE event is notified about a file in that directory, command is executed with new file as parameter
 
 
 build on linux:
@@ -49,7 +49,7 @@ const char * FILEMON = "filemon";
 
 static void show_inotify_event(struct inotify_event *i, char_p dir_name)
 {
-	syslog(LOG_INFO,"[dir_name='%s' wd=%2d] ",dir_name, i->wd);
+	syslog(LOG_INFO,"show_inotify_event [dir_name='%s' wd=%2d] ",dir_name, i->wd);
 
     if (i->cookie > 0)
     	syslog(LOG_DEBUG,"cookie=%4d ", i->cookie);
@@ -59,9 +59,9 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name)
     // This filename is null-terminated .....
 
     if (i->len > 0)
-    	syslog(LOG_INFO,"file name = %s ", i->name);
+    	syslog(LOG_INFO,"show_inotify_event file name = %s ", i->name);
     else
-    	syslog(LOG_INFO,"*no file name* "); // event refers to watched directory
+    	syslog(LOG_INFO,"show_inotify_event *no file name* "); // event refers to watched directory
 
     // see man inotify
     // for explanation of events
@@ -178,27 +178,18 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name)
 
 char buf[BUF_LEN] __attribute__ ((aligned(__alignof__(struct inotify_event))));
 // https://gcc.gnu.org/onlinedocs/gcc/Alignment.html
-//
-
 
 
 void monitor(char_p directories[], int directories_len) {
 
-
 	int wd;
 	int inotifyFd;
 	int num_bytes_read;
-
-//	char * cwd;
-//
-//	cwd = getcwd(NULL, 0);
-//	printf("process current working directory: %s\n", cwd);
-//	free(cwd);
-
 	int * wd_names;
-	wd_names = malloc(sizeof(int) * directories_len);
+
+	wd_names = calloc(directories_len, sizeof(int));
 	if (wd_names == NULL) {
-        perror("malloc error");
+		syslog(LOG_ERR, "calloc error");
         exit(EXIT_FAILURE);
 	}
 
@@ -206,7 +197,7 @@ void monitor(char_p directories[], int directories_len) {
 	// returns a file descriptor associated with a new inotify event queue.
     inotifyFd = inotify_init();
     if (inotifyFd == -1) {
-        perror("inotify_init");
+    	syslog(LOG_ERR, "inotify_init");
         exit(EXIT_FAILURE);
     }
 
@@ -216,14 +207,13 @@ void monitor(char_p directories[], int directories_len) {
     	if (directories[j] == NULL)
     		continue;
 
-
-        syslog(LOG_INFO, "Watching %s using wd %d", directories[j], wd);
+        syslog(LOG_INFO, "watching %s", directories[j]);
 
     	// inotify_add_watch()  adds  a  new  watch, or modifies an existing watch,
     	// for the file whose location is specified in pathname
         wd = inotify_add_watch(inotifyFd, directories[j], IN_ALL_EVENTS);
         if (wd == -1) {
-            perror("inotify_init");
+        	syslog(LOG_ERR, "inotify_init");
             exit(EXIT_FAILURE);
         }
 
@@ -248,12 +238,12 @@ void monitor(char_p directories[], int directories_len) {
         		syslog(LOG_ERR, "read(): EINTR");
 				continue;
         	} else {
-                perror("read()");
+        		syslog(LOG_ERR, "read()");
                 exit(EXIT_FAILURE);
         	}
         }
 
-        syslog(LOG_INFO, "read %d bytes from inotify fd", num_bytes_read);
+        syslog(LOG_DEBUG, "read %d bytes from inotify fd", num_bytes_read);
 
         // process all of the events in buffer returned by read()
 
@@ -263,7 +253,6 @@ void monitor(char_p directories[], int directories_len) {
             event = (struct inotify_event *) p;
 
             // recover directory name associated to wd
-            // i->wd
             int dir_pos = -1;
             for (int i = 0; i < directories_len; i++) {
             	if (wd_names[i] == event->wd) {
@@ -304,10 +293,12 @@ int main(int argc, char * argv[]) {
     int dirs_len = 0;
     int dirs_counter = 0;
 
-    dirs = NULL;
-
     // array of strings containing absolute path of directories to monitor
     char_p * abs_dirs;
+
+    dirs = NULL;
+
+    openlog(FILEMON, LOG_CONS | LOG_PERROR | LOG_PID, 0);
 
     while ((opt = getopt(argc, argv, "d:c:")) != -1) {
         switch (opt) {
@@ -318,7 +309,7 @@ int main(int argc, char * argv[]) {
         		dirs = realloc(dirs, sizeof(char_p) * dirs_len);
 
         	    if (dirs == NULL) {
-        	        fprintf(stderr, "cannot reallocate array for files/directories to monitor\n");
+        	    	syslog(LOG_ERR, "cannot reallocate array for files/directories to monitor\n");
         	        exit(EXIT_FAILURE);
         	    }
 
@@ -341,17 +332,14 @@ int main(int argc, char * argv[]) {
     	exit(EXIT_FAILURE);
     }
 
-    openlog(FILEMON, LOG_CONS | LOG_PERROR | LOG_PID, 0);
 
+	syslog(LOG_INFO,"command: %s", command);
 
     syslog(LOG_INFO,"number of specified files/directories: %d", dirs_counter);
 	for (int i = 0; i < dirs_len; i++) {
 		if (dirs[i] != NULL)
 			syslog(LOG_INFO,"directory[%d]: %s", i, dirs[i]);
 	}
-
-	syslog(LOG_INFO,"command: %s", command);
-
 
 	if (strlen(command) > MAX_COMMAND_LEN) {
 		syslog(LOG_ERR, "invalid command");
