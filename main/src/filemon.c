@@ -31,6 +31,8 @@ gcc filemon.c -o filemon -s
 
 #include <sys/wait.h>
 
+#include <syslog.h>
+
 
 typedef char * char_p;
 
@@ -43,60 +45,63 @@ char * command = NULL;
 char *space = " ";
 char *slash = "/";
 
+const char * FILEMON = "filemon";
+
 static void show_inotify_event(struct inotify_event *i, char_p dir_name)
 {
-    printf("[dir_name='%s' wd=%2d] ",dir_name, i->wd);
+	syslog(LOG_INFO,"[dir_name='%s' wd=%2d] ",dir_name, i->wd);
 
     if (i->cookie > 0)
-        printf("cookie=%4d ", i->cookie);
+    	syslog(LOG_DEBUG,"cookie=%4d ", i->cookie);
 
     // The  name  field is present only when an event is returned for a file
     // inside a watched directory; it identifies the filename within the watched directory.
     // This filename is null-terminated .....
 
     if (i->len > 0)
-        printf("file name = %s ", i->name);
+    	syslog(LOG_INFO,"file name = %s ", i->name);
     else
-    	printf("*no file name* "); // event refers to watched directory
+    	syslog(LOG_INFO,"*no file name* "); // event refers to watched directory
 
     // see man inotify
     // for explanation of events
 
-    printf("mask = ");
+    char mask_str[512] = "mask = ";
 
     // IN_ACCESS  File was accessed (e.g., read(2), execve(2)).
-    if (i->mask & IN_ACCESS)        printf("IN_ACCESS ");
+    if (i->mask & IN_ACCESS)        strcat(mask_str, "IN_ACCESS ");
 
     // IN_ATTRIB Metadata changed—for example, permissions, timestamps, user/group ID
-    if (i->mask & IN_ATTRIB)        printf("IN_ATTRIB ");
+    if (i->mask & IN_ATTRIB)        strcat(mask_str, "IN_ATTRIB ");
 
-    if (i->mask & IN_CLOSE_NOWRITE) printf("IN_CLOSE_NOWRITE ");
+    if (i->mask & IN_CLOSE_NOWRITE) strcat(mask_str, "IN_CLOSE_NOWRITE ");
 
     // IN_CLOSE_NOWRITE  File or directory not opened for writing was closed.
-    if (i->mask & IN_CLOSE_WRITE)   printf("IN_CLOSE_WRITE ");
+    if (i->mask & IN_CLOSE_WRITE)   strcat(mask_str, "IN_CLOSE_WRITE ");
 
-    if (i->mask & IN_CREATE)        printf("IN_CREATE ");
-    if (i->mask & IN_DELETE)        printf("IN_DELETE ");
-    if (i->mask & IN_DELETE_SELF)   printf("IN_DELETE_SELF ");
-    if (i->mask & IN_IGNORED)       printf("IN_IGNORED ");
+    if (i->mask & IN_CREATE)        strcat(mask_str, "IN_CREATE ");
+    if (i->mask & IN_DELETE)        strcat(mask_str, "IN_DELETE ");
+    if (i->mask & IN_DELETE_SELF)   strcat(mask_str, "IN_DELETE_SELF ");
+    if (i->mask & IN_IGNORED)       strcat(mask_str, "IN_IGNORED ");
 
     // IN_ISDIR  Subject of this event is a directory.
-    if (i->mask & IN_ISDIR)         printf("IN_ISDIR ");
+    if (i->mask & IN_ISDIR)         strcat(mask_str, "IN_ISDIR ");
 
-    if (i->mask & IN_MODIFY)        printf("IN_MODIFY ");
-    if (i->mask & IN_MOVE_SELF)     printf("IN_MOVE_SELF ");
-    if (i->mask & IN_MOVED_FROM)    printf("IN_MOVED_FROM ");
-    if (i->mask & IN_MOVED_TO)      printf("IN_MOVED_TO ");
+    if (i->mask & IN_MODIFY)        strcat(mask_str, "IN_MODIFY ");
+    if (i->mask & IN_MOVE_SELF)     strcat(mask_str, "IN_MOVE_SELF ");
+    if (i->mask & IN_MOVED_FROM)    strcat(mask_str, "IN_MOVED_FROM ");
+    if (i->mask & IN_MOVED_TO)      strcat(mask_str, "IN_MOVED_TO ");
 
     // IN_OPEN  File or directory was opened.
-    if (i->mask & IN_OPEN)          printf("IN_OPEN ");
+    if (i->mask & IN_OPEN)          strcat(mask_str, "IN_OPEN ");
 
-    if (i->mask & IN_Q_OVERFLOW)    printf("IN_Q_OVERFLOW ");
-    if (i->mask & IN_UNMOUNT)       printf("IN_UNMOUNT ");
-    printf("\n");
+    if (i->mask & IN_Q_OVERFLOW)    strcat(mask_str, "IN_Q_OVERFLOW ");
+    if (i->mask & IN_UNMOUNT)       strcat(mask_str, "IN_UNMOUNT ");
+
+    syslog(LOG_INFO, mask_str);
 
 
-    if ((i->mask & IN_CLOSE_WRITE) || (i->mask & IN_CLOSE_NOWRITE)) {
+    if ((i->mask & IN_CLOSE_WRITE)/* || (i->mask & IN_CLOSE_NOWRITE)*/) {
     	// execute command passing file as parameter
     	if (i->len) {
 
@@ -120,7 +125,7 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name)
     		// append file name do cmd
     		strncat(cmd, i->name, i->len);
 
-    		printf("cmd: %s\n", cmd);
+    		syslog(LOG_INFO, "cmd: %s", cmd);
 
     		pid_t child_pid;
     		int wstatus;
@@ -133,10 +138,10 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name)
     		case 0:
 
     			child_pid = getpid();
-    			printf("[child process] pid=%d\n", child_pid);
+    			syslog(LOG_INFO, "[child process] pid=%d", child_pid);
 
     			if (execl("/bin/sh", "sh", "-c", cmd, (char *) NULL) != 0) {
-    				perror("[child process] execl");
+    				syslog(LOG_ERR, "[child process] execl");
     				exit(EXIT_FAILURE);
     			}
 
@@ -149,7 +154,7 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name)
     		do {
             	pid_t ws = waitpid(child_pid, &wstatus, 0);
                 if (ws == -1) {
-                    perror("[parent] waitpid");
+                	syslog(LOG_ERR, "[parent] waitpid");
                     exit(EXIT_FAILURE);
                 }
 
@@ -157,9 +162,9 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name)
 
                 	modal_result = WEXITSTATUS(wstatus);
 
-                    printf("[parent] child process è terminato, ha restituito: %d\n", modal_result);
+                	syslog(LOG_DEBUG, "[parent] child process has terminated, returning: %d", modal_result);
                 } else if (WIFSIGNALED(wstatus)) {
-                    printf("[parent] child process killed by signal %d\n", WTERMSIG(wstatus));
+                	syslog(LOG_DEBUG, "[parent] child process killed by signal %d", WTERMSIG(wstatus));
                 }
             } while (!WIFEXITED(wstatus) && !WIFSIGNALED(wstatus));
 
@@ -184,11 +189,6 @@ void monitor(char_p directories[], int directories_len) {
 	int inotifyFd;
 	int num_bytes_read;
 
-//	printf("NAME_MAX = %d\n", NAME_MAX);
-//	printf("sizeof(struct inotify_event) = %ld\n", sizeof(struct inotify_event));
-//	printf("__alignof__(struct inotify_event) = %ld bytes\n", __alignof__(struct inotify_event));
-//	printf("\n");
-
 //	char * cwd;
 //
 //	cwd = getcwd(NULL, 0);
@@ -200,11 +200,6 @@ void monitor(char_p directories[], int directories_len) {
 	if (wd_names == NULL) {
         perror("malloc error");
         exit(EXIT_FAILURE);
-	}
-
-	if (directories_len == 0) {
-		printf("provide at least a file or directory to watch!\n");
-		exit(0);
 	}
 
 	// inotify_init() initializes a new inotify instance and
@@ -221,6 +216,9 @@ void monitor(char_p directories[], int directories_len) {
     	if (directories[j] == NULL)
     		continue;
 
+
+        syslog(LOG_INFO, "Watching %s using wd %d", directories[j], wd);
+
     	// inotify_add_watch()  adds  a  new  watch, or modifies an existing watch,
     	// for the file whose location is specified in pathname
         wd = inotify_add_watch(inotifyFd, directories[j], IN_ALL_EVENTS);
@@ -232,23 +230,22 @@ void monitor(char_p directories[], int directories_len) {
         // associate watch descriptor to position of name in the array of strings
         wd_names[j] = wd;
 
-        printf("Watching %s using wd %d\n", directories[j], wd);
     }
 
-    printf("ready!\n\n");
+    syslog(LOG_INFO, "ready!");
 
     // loop forever
     for (;;) {
     	num_bytes_read = read(inotifyFd, buf, BUF_LEN);
         if (num_bytes_read == 0) {
-            printf("read() from inotify fd returned 0!");
+        	syslog(LOG_ERR, "read() from inotify fd returned 0!");
             exit(EXIT_FAILURE);
         }
 
         if (num_bytes_read == -1) {
 
         	if (errno == EINTR) {
-				printf("read(): EINTR\n");
+        		syslog(LOG_ERR, "read(): EINTR");
 				continue;
         	} else {
                 perror("read()");
@@ -256,7 +253,7 @@ void monitor(char_p directories[], int directories_len) {
         	}
         }
 
-        printf("read %d bytes from inotify fd\n", num_bytes_read);
+        syslog(LOG_INFO, "read %d bytes from inotify fd", num_bytes_read);
 
         // process all of the events in buffer returned by read()
 
@@ -276,7 +273,7 @@ void monitor(char_p directories[], int directories_len) {
             }
 
             if (dir_pos == -1) {
-            	fprintf(stderr, "cannot find directory name!\n");
+            	syslog(LOG_ERR, "cannot find directory name!");
             	exit(EXIT_FAILURE);
             }
 
@@ -309,8 +306,8 @@ int main(int argc, char * argv[]) {
 
     dirs = NULL;
 
+    // array of strings containing absolute path of directories to monitor
     char_p * abs_dirs;
-
 
     while ((opt = getopt(argc, argv, "d:c:")) != -1) {
         switch (opt) {
@@ -338,34 +335,35 @@ int main(int argc, char * argv[]) {
             exit(EXIT_FAILURE);
         }
     }
-//    printf("optind=%d\n", optind);
 
-    if (command == NULL && dirs_len == 0) {
+    if (command == NULL || dirs_len == 0) {
     	show_help(argc, argv);
     	exit(EXIT_FAILURE);
     }
 
+    openlog(FILEMON, LOG_CONS | LOG_PERROR | LOG_PID, 0);
 
-	printf("number of specified files/directories: %d\n", dirs_counter);
+
+    syslog(LOG_INFO,"number of specified files/directories: %d", dirs_counter);
 	for (int i = 0; i < dirs_len; i++) {
 		if (dirs[i] != NULL)
-			printf("directory[%d]: %s\n", i, dirs[i]);
+			syslog(LOG_INFO,"directory[%d]: %s", i, dirs[i]);
 	}
 
-    printf("command: %s\n", command);
+	syslog(LOG_INFO,"command: %s", command);
 
 
-	if (command == NULL || strlen(command) > MAX_COMMAND_LEN) {
-		fprintf(stderr, "invalid command\n");
+	if (strlen(command) > MAX_COMMAND_LEN) {
+		syslog(LOG_ERR, "invalid command");
 		exit(EXIT_FAILURE);
 	}
 
 	if (dirs_len > 0) {
 
 		// transform paths to absolute paths
-		abs_dirs = malloc(sizeof(char_p) * dirs_len);
+		abs_dirs = calloc(dirs_len, sizeof(char_p));
 		if (abs_dirs == NULL) {
-	        fprintf(stderr, "cannot allocate array for files/directories to monitor\n");
+			syslog(LOG_ERR, "cannot allocate array for files/directories to monitor");
 	        exit(EXIT_FAILURE);
 		}
 
@@ -375,16 +373,15 @@ int main(int argc, char * argv[]) {
 
 			abs_dirs[i] = calloc(PATH_MAX, sizeof(char));
 			if (abs_dirs[i] == NULL) {
-		        fprintf(stderr, "cannot allocate array for files/directories to monitor\n");
+				syslog(LOG_ERR, "cannot allocate array for files/directories to monitor");
 		        exit(EXIT_FAILURE);
 			}
 
 			if (realpath(dirs[i], abs_dirs[i]) == NULL) {
-				perror("error in calculating absolute path");
+				syslog(LOG_ERR, "error in calculating absolute path");
 				exit(EXIT_FAILURE);
 			}
 		}
-
 
 		monitor(abs_dirs, dirs_len);
 	}
