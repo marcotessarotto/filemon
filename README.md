@@ -69,6 +69,11 @@ install to /usr/bin/ directory:
 sudo cp filemon /usr/bin/
 ```
 
+## Development
+`filemon` is developed using [Eclipse IDE for C/C++ Developers](https://www.eclipse.org/downloads/packages/release/2023-06/r/eclipse-ide-cc-developers).
+The repository contains all project files.
+
+
 
 ## Run as a systemd service
 
