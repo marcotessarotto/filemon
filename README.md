@@ -7,11 +7,12 @@ for every event that is notified by the operating system, filemon invokes a comm
 
 ## Usage
 
-`filemon` takes one or more -d parameters; each -d parameter requires the name of a file or directory to watch for events.
+`filemon` requires at least one -d parameter and one -c parameter:
 
-takes a single -c parameter which specifies the command to invoke when an event on the files/directories.
+- one or more `-d file_or_directory` parameter; each -d parameter requires the name of a file or directory to watch for events.
+- a single `-c command` parameter which specifies the command to invoke when an event on the files/directories.
 
-Whenever an event is recevied, the command is invoked, the absolute file name is concatenated to the command
+Whenever an event is notified to `filemon`, the command is invoked, the absolute file name is concatenated to the command.
 
 
 ## Example
