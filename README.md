@@ -28,7 +28,7 @@ with this command, `filemon` monitors directory `/tmp/`; when a `IN_CLOSE_WRITE`
  
  output running the example, and running the command  `touch /tmp/this_is_a_new_file` in a separate console:
  
- ```bash 
+ ```txt 
 $ filemon -d /tmp/ -c "ls -l"
 filemon[9714]: command: ls -l
 filemon[9714]: number of specified files/directories: 1
