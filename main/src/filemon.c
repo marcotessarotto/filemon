@@ -98,7 +98,7 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name)
     if (i->mask & IN_Q_OVERFLOW)    strcat(mask_str, "IN_Q_OVERFLOW ");
     if (i->mask & IN_UNMOUNT)       strcat(mask_str, "IN_UNMOUNT ");
 
-    syslog(LOG_INFO, mask_str);
+    syslog(LOG_INFO, "%s", mask_str);
 
 
     if ((i->mask & IN_CLOSE_WRITE)/* || (i->mask & IN_CLOSE_NOWRITE)*/) {
