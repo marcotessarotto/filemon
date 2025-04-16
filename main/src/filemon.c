@@ -5,7 +5,7 @@
  Version     :
  Copyright   : Marco Tessarotto (c) 2023
  Description : Monitors one or more files or directories specified as parameters;
-              when an IN_CLOSE_WRITE event is notified, invokes a command on that file.
+              when an IN_CLOSE_WRITE or IN_MOVED_TO event is notified, invokes a command on that file.
               Example: filemon -d /tmp/ -c "ls -l"
  ============================================================================
  */
@@ -40,7 +40,8 @@ void handle_signal(int sig) {
     running = 0;
 }
 
-// Displays an inotify event and, in the case of IN_CLOSE_WRITE, executes a command.
+// Displays an inotify event and, in the case of an event that signals file arrival,
+// executes a command passing the file as parameter.
 static void show_inotify_event(struct inotify_event *i, char_p dir_name) {
     syslog(LOG_INFO, "show_inotify_event [dir_name='%s' wd=%2d]", dir_name, i->wd);
 
@@ -72,22 +73,26 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name) {
     if (i->mask & IN_UNMOUNT)       strcat(mask_str, "IN_UNMOUNT ");
     syslog(LOG_INFO, "%s", mask_str);
 
-    // Process only IN_CLOSE_WRITE events
-    if (i->mask & IN_CLOSE_WRITE) {
-        // Ensure we have a filename to pass as parameter
-        if (i->len > 0) {
-            char cmd[MAX_COMMAND_LEN];
-            // Build command using snprintf for safety.
-            // Note: we check if the directory already ends with '/' before appending.
-            int ret = snprintf(cmd, sizeof(cmd), "%s %s%s%s",
-                               command,
-                               dir_name,
-                               (dir_name[strlen(dir_name) - 1] == '/') ? "" : slash,
-                               i->name);
-            if (ret < 0 || ret >= sizeof(cmd)) {
-                syslog(LOG_ERR, "Command buffer overflow");
-                return;
-            }
+
+
+	// Process only events that indicate a file has been written or moved into the directory.
+	if (((i->mask & IN_CLOSE_WRITE) || (i->mask & IN_MOVED_TO)) && i->len > 0) {
+			// Ignore temporary files (which by convention begin with a dot)
+			if (i->name[0] == '.') {
+				syslog(LOG_DEBUG, "Ignoring temporary file: %s", i->name);
+				return;
+			}
+
+			char cmd[MAX_COMMAND_LEN];
+			int ret = snprintf(cmd, sizeof(cmd), "%s %s%s%s",
+							   command,
+							   dir_name,
+							   (dir_name[strlen(dir_name) - 1] == '/') ? "" : slash,
+							   i->name);
+			if (ret < 0 || ret >= sizeof(cmd)) {
+				syslog(LOG_ERR, "Command buffer overflow");
+				return;
+			}
 
             syslog(LOG_INFO, "cmd: %s", cmd);
 
@@ -101,7 +106,6 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name) {
                 exit(EXIT_FAILURE);
             } else if (child_pid == 0) {
                 syslog(LOG_INFO, "[child process] pid=%d", getpid());
-                // execl() returns only on error.
                 if (execl("/bin/sh", "sh", "-c", cmd, (char *) NULL) == -1) {
                     syslog(LOG_ERR, "[child process] execl failed");
                     exit(EXIT_FAILURE);
@@ -122,7 +126,6 @@ static void show_inotify_event(struct inotify_event *i, char_p dir_name) {
                     syslog(LOG_DEBUG, "[parent] child process killed by signal %d", WTERMSIG(wstatus));
                 }
             }
-        }
     }
 }
 
@@ -148,7 +151,7 @@ void monitor(char_p directories[], int directories_count) {
         exit(EXIT_FAILURE);
     }
 
-    // Watch each provided directory (subscribe only to needed events if possible)
+    // Watch each provided directory.
     for (int j = 0; j < directories_count; j++) {
         if (directories[j] == NULL)
             continue;
@@ -200,24 +203,22 @@ void monitor(char_p directories[], int directories_count) {
         }
     }
 
-    // Cleanup: free allocated resources.
     free(wd_names);
     close(inotifyFd);
 }
 
 void show_help(int argc, char * argv[]) {
-    fprintf(stderr, "Monitors one or more files or directories specified as parameters; when a new file event is detected, executes an action on it.\n");
+    fprintf(stderr, "Monitors one or more files or directories specified as parameters; when a file event (IN_CLOSE_WRITE or IN_MOVED_TO) is detected, executes an action on it.\n");
     fprintf(stderr, "Usage: %s -d file/directory -c command\n", argv[0]);
     fprintf(stderr, "Example: %s -d /tmp/ -d /home/marco/ -c \"ls -l\"\n", argv[0]);
 }
 
 int main(int argc, char * argv[]) {
     int opt;
-    char_p * dirs = NULL;    // Dynamic array of directory strings
+    char_p * dirs = NULL;    // Dynamic array for directory strings
     int dirs_len = 0;        // Allocated length (capacity)
     int dirs_counter = 0;    // Actual number of directories provided
 
-    // Open syslog connection
     openlog(FILEMON, LOG_CONS | LOG_PERROR | LOG_PID, 0);
 
     // Register signal handlers for graceful termination.
@@ -241,7 +242,7 @@ int main(int argc, char * argv[]) {
             case 'c':
                 command = optarg;
                 break;
-            default: /* '?' */
+            default:
                 show_help(argc, argv);
                 exit(EXIT_FAILURE);
         }
@@ -264,7 +265,7 @@ int main(int argc, char * argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // Convert paths to absolute paths
+    // Convert paths to absolute paths.
     char_p * abs_dirs = calloc(dirs_counter, sizeof(char_p));
     if (abs_dirs == NULL) {
         syslog(LOG_ERR, "cannot allocate array for files/directories to monitor");
@@ -286,7 +287,7 @@ int main(int argc, char * argv[]) {
 
     monitor(abs_dirs, dirs_counter);
 
-    // Free absolute directory array after monitor() returns.
+    // Cleanup: free absolute directory array.
     for (int i = 0; i < dirs_counter; i++) {
         free(abs_dirs[i]);
     }
